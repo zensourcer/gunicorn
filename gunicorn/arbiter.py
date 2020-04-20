@@ -40,9 +40,10 @@ class Arbiter(object):
     PIPE = []
 
     # I love dynamic languages
+    SIG_CHLD = False
     SIG_QUEUE = []
     SIGNALS = [getattr(signal, "SIG%s" % x)
-               for x in "HUP QUIT INT TERM TTIN TTOU USR1 USR2 WINCH".split()]
+               for x in "CHLD HUP QUIT INT TERM TTIN TTOU USR1 USR2 WINCH".split()]
     SIG_NAMES = dict(
         (getattr(signal, name), name[3:].lower()) for name in dir(signal)
         if name[:3] == "SIG" and name[3] != "_"
@@ -186,10 +187,11 @@ class Arbiter(object):
         # initialize all signals
         for s in self.SIGNALS:
             signal.signal(s, self.signal)
-        signal.signal(signal.SIGCHLD, self.handle_chld)
 
     def signal(self, sig, frame):
-        if len(self.SIG_QUEUE) < 5:
+        if sig is signal.SIGCHLD:
+            self.SIG_CHLD = True
+        elif len(self.SIG_QUEUE) < 5:
             self.SIG_QUEUE.append(sig)
             self.wakeup()
 
@@ -237,10 +239,29 @@ class Arbiter(object):
                 self.pidfile.unlink()
             sys.exit(-1)
 
-    def handle_chld(self, sig, frame):
-        "SIGCHLD handling"
+    def handle_chld(self):
+        """\
+        SIGCHLD handling.
+
+        Reset the indicator flag and then reap workers. Be sure to do these
+        operations in this order in case workers die during reaping.
+
+        Lastly, install the signal handler in case the handler was reset.
+        According to the documentation for the signal module:
+
+            A handler for a particular signal, once set, remains installed
+            until it is explicitly reset (Python emulates the BSD style
+            interface regardless of the underlying implementation), with the
+            exception of the handler for SIGCHLD, which follows the underlying
+            implementation.
+
+        Python makes this exception to avoid infinite recursion on platforms
+        that invoke the handler immediately when installing it from a process
+        with dead children.
+        """
+        self.SIG_CHLD = False
         self.reap_workers()
-        self.wakeup()
+        signal.signal(signal.SIG_CHLD, self.signal)
 
     def handle_hup(self):
         """\
@@ -388,9 +409,11 @@ class Arbiter(object):
         limit = time.time() + self.cfg.graceful_timeout
         # instruct the workers to exit
         self.kill_workers(sig)
+        self.reap_workers()
         # wait until the graceful timeout
         while self.WORKERS and time.time() < limit:
             time.sleep(0.1)
+            self.reap_workers()
 
         self.kill_workers(signal.SIGKILL)
 
