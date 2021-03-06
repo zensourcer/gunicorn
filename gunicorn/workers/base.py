@@ -136,6 +136,10 @@ class Worker(object):
         self.cfg.post_worker_init(self)
 
         # Enter main run loop
+        # Notify before setting booted to True, in case the arbiter evaluates
+        # the timeout after booted is set to True, but before the worker has
+        # called notify
+        self.notify()
         self.booted = True
         self.run()
 
