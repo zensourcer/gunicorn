@@ -100,6 +100,7 @@ class Arbiter(object):
         self.address = self.cfg.address
         self.num_workers = self.cfg.workers
         self.timeout = self.cfg.timeout
+        self.boot_timeout = self.cfg.boot_timeout
         self.proc_name = self.cfg.proc_name
 
         self.log.debug('Current configuration:\n{0}'.format(
@@ -495,7 +496,18 @@ class Arbiter(object):
         workers = list(self.WORKERS.items())
         for (pid, worker) in workers:
             try:
-                if time.time() - worker.tmp.last_update() <= self.timeout:
+                if worker.booted:
+                    if not self.timeout:
+                        has_not_timed_out = True
+                    else:
+                        has_not_timed_out = time.time() - worker.tmp.last_update() <= self.timeout
+                else:
+                    if self.boot_timeout:
+                        has_not_timed_out = time.time() - worker.tmp.last_update() <= self.boot_timeout
+                    else:
+                        has_not_timed_out = time.time() - worker.tmp.last_update() <= self.timeout
+
+                if has_not_timed_out:
                     continue
             except (OSError, ValueError):
                 continue

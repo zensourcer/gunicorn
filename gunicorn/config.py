@@ -785,6 +785,23 @@ class Timeout(Setting):
         """
 
 
+
+class BootTimeout(Setting):
+    name = "boot_timeout"
+    section = "Worker Processes"
+    cli = ["--boot-timeout"]
+    meta = "INT"
+    validator = validate_pos_int
+    type = int
+    default = 30
+    desc = """\
+        This implements the same behavior but is applied for workers before
+        they enter the booted state. This is useful if the worker may be slow
+        to boot but should have a lower timeout once started.
+        """
+
+
+
 class GracefulTimeout(Setting):
     name = "graceful_timeout"
     section = "Worker Processes"
